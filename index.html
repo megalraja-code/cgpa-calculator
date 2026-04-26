@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="description" content="CGPA & SGPA Calculator with grade prediction and what-if analysis. Plan semesters, simulate outcomes, and reach your target GPA faster.">
+<title>CGPA Pro Max</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+
+body{
+  font-family:'Segoe UI',sans-serif;
+  background:#0f172a;
+  color:white;
+  padding-bottom:70px;
+}
+
+.container{
+  max-width:800px;
+  margin:auto;
+  padding:20px;
+}
+
+h1{text-align:center;margin-bottom:10px}
+
+.cgpa{
+  text-align:center;
+  font-size:32px;
+  font-weight:bold;
+  margin-bottom:20px;
+  color:#38bdf8;
+}
+
+.card{
+  position:relative;
+  background:#1e293b;
+  padding:15px;
+  border-radius:15px;
+  margin-bottom:15px;
+}
+
+.remove-x{
+  position:absolute;
+  top:10px;
+  right:12px;
+  font-size:18px;
+  color:#cbd5f5;
+  cursor:pointer;
+  opacity:0.8;
+}
+.remove-x:hover{color:#ef4444;transform:scale(1.2)}
+
+.row{display:flex;gap:15px}
+.field{flex:1}
+
+label{font-size:14px}
+
+select,input{
+  width:100%;
+  padding:10px;
+  border:none;
+  border-radius:10px;
+  margin-top:5px;
+}
+
+.credit-box{
+  display:flex;
+  background:#334155;
+  border-radius:10px;
+  overflow:hidden;
+}
+
+.credit-box button{
+  width:40px;
+  border:none;
+  background:#475569;
+  color:white;
+  cursor:pointer;
+}
+
+.credit-box input{
+  text-align:center;
+  background:transparent;
+  color:white;
+}
+
+.btn{
+  margin-top:10px;
+  padding:12px;
+  width:100%;
+  border:none;
+  border-radius:10px;
+  background:#3b82f6;
+  color:white;
+  cursor:pointer;
+}
+
+.tab{display:none}
+.active{display:block}
+
+.nav{
+  position:fixed;
+  bottom:0;
+  left:0;
+  width:100%;
+  display:flex;
+  background:#020617;
+}
+
+.nav button{
+  flex:1;
+  padding:15px;
+  border:none;
+  background:none;
+  color:white;
+  cursor:pointer;
+}
+
+.nav button:hover{background:#1e293b}
+
+#result{
+  margin-top:10px;
+  font-weight:bold;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h1>CGPA Pro Max</h1>
+<div class="cgpa" id="cgpa">CGPA: 0.00</div>
+
+<!-- CALCULATOR -->
+<div id="calc" class="tab active">
+
+  <div class="card">
+    <h3>Previous Performance</h3>
+    <input type="number" id="prevCgpa" placeholder="Previous CGPA (0–10)" min="0" max="10" step="0.01">
+    <input type="number" id="prevCredits" placeholder="Total Credits Completed" min="0">
+  </div>
+
+  <button class="btn" onclick="addSubject()">+ Add Subject</button>
+  <div id="subjects"></div>
+</div>
+
+<!-- ANALYTICS -->
+<div id="chartTab" class="tab">
+  <canvas id="chart"></canvas>
+</div>
+
+<!-- PREDICTION -->
+<div id="predictTab" class="tab">
+
+  <div class="card">
+    <h3>Target CGPA</h3>
+    <input type="number" id="target" placeholder="1–10" min="0" max="10" step="0.01">
+    <input type="number" id="nextCredits" placeholder="Next Sem Credits" min="1">
+    <button class="btn" onclick="predict()">Predict</button>
+    <div id="result"></div>
+  </div>
+
+</div>
+
+</div>
+
+<!-- NAV -->
+<div class="nav">
+  <button onclick="showTab('calc')">Calculator</button>
+  <button onclick="showTab('chartTab')">Analytics</button>
+  <button onclick="showTab('predictTab')">Prediction</button>
+</div>
+
+<script>
+const gradeMap={"O":10,"A+":9,"A":8,"B+":7,"B":6,"C":5,"F":0};
+const STORAGE_KEY="cgpa_subjects_v3";
+const MAX_CREDIT=15;
+
+let subjects = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [
+  {grade:"O",credit:4},
+  {grade:"A",credit:3},
+  {grade:"B+",credit:3}
+];
+
+let chart;
+
+const prevCgpaEl=document.getElementById("prevCgpa");
+const prevCreditsEl=document.getElementById("prevCredits");
+const targetEl=document.getElementById("target");
+const nextCreditsEl=document.getElementById("nextCredits");
+
+function save(){
+  localStorage.setItem(STORAGE_KEY,JSON.stringify(subjects));
+}
+
+function addSubject(){
+  subjects.push({grade:"O",credit:4});
+  render(); save();
+}
+
+function removeSubject(i){
+  if(subjects.length===1) return alert("At least one subject required");
+  subjects.splice(i,1);
+  render(); save();
+}
+
+function updateGrade(i,val){
+  subjects[i].grade=val;
+  calculate(); save();
+}
+
+function changeCredit(i,d){
+  let val=subjects[i].credit + d;
+  val=Math.max(1,Math.min(MAX_CREDIT,val));
+  subjects[i].credit=val;
+  render(); save();
+}
+
+function calculate(){
+  let total=0,credits=0,arr=[];
+
+  let prevCgpa=parseFloat(prevCgpaEl.value);
+  let prevCredits=parseFloat(prevCreditsEl.value);
+
+  if(isNaN(prevCgpa)) prevCgpa=0;
+  if(isNaN(prevCredits)) prevCredits=0;
+
+  if(prevCredits===0) prevCgpa=0;
+
+  total += prevCgpa * prevCredits;
+  credits += prevCredits;
+
+  subjects.forEach(s=>{
+    let gp=gradeMap[s.grade];
+    total += gp * s.credit;
+    credits += s.credit;
+    arr.push(gp);
+  });
+
+  let cgpa = credits ? total/credits : 0;
+
+  document.getElementById("cgpa").innerText="CGPA: "+cgpa.toFixed(2);
+
+  drawChart(arr);
+}
+
+function drawChart(arr){
+  if(chart) chart.destroy();
+
+  chart=new Chart(document.getElementById("chart"),{
+    type:"bar",
+    data:{
+      labels:arr.map((_,i)=>"Sub "+(i+1)),
+      datasets:[{data:arr}]
+    },
+    options:{
+      plugins:{legend:{display:false}},
+      scales:{y:{min:0,max:10}}
+    }
+  });
+}
+
+function predict(){
+  let target=parseFloat(targetEl.value);
+  let prevCgpa=parseFloat(prevCgpaEl.value);
+  let prevCredits=parseFloat(prevCreditsEl.value);
+  let nextCredits=parseFloat(nextCreditsEl.value);
+
+  if(isNaN(target)||target<=0||target>10) return show("Invalid target","red");
+  if(isNaN(prevCgpa)) prevCgpa=0;
+  if(isNaN(prevCredits)) prevCredits=0;
+  if(isNaN(nextCredits)||nextCredits<=0) return show("Enter next sem credits","red");
+
+  if(prevCredits===0) prevCgpa=0;
+
+  let currentTotal=0,currentCredits=0;
+
+  subjects.forEach(s=>{
+    currentTotal+=gradeMap[s.grade]*s.credit;
+    currentCredits+=s.credit;
+  });
+
+  let totalCredits=prevCredits+currentCredits;
+  let totalPoints=(prevCgpa*prevCredits)+currentTotal;
+
+  let required=target*(totalCredits+nextCredits);
+  let needed=required-totalPoints;
+
+  if(needed<=0) return show("Target already secured","green");
+
+  let sgpa=needed/nextCredits;
+
+  if(!isFinite(sgpa)) return show("Calculation error","red");
+  if(sgpa>10) return show("Impossible target","red");
+
+  show("Need "+sgpa.toFixed(2)+" SGPA next sem","#22c55e");
+}
+
+function show(msg,color){
+  let el=document.getElementById("result");
+  el.innerText=msg;
+  el.style.color=color;
+}
+
+function render(){
+  let html="";
+
+  subjects.forEach((s,i)=>{
+    html+=`
+    <div class="card">
+      <span class="remove-x" onclick="removeSubject(${i})">&times;</span>
+      <h3>Subject ${i+1}</h3>
+
+      <div class="row">
+        <div class="field">
+          <label>Grade</label>
+          <select onchange="updateGrade(${i},this.value)">
+            ${Object.keys(gradeMap).map(g=>
+              `<option ${g==s.grade?'selected':''}>${g}</option>`
+            ).join("")}
+          </select>
+        </div>
+
+        <div class="field">
+          <label>Credit</label>
+          <div class="credit-box">
+            <button onclick="changeCredit(${i},-1)">-</button>
+            <input value="${s.credit}" readonly>
+            <button onclick="changeCredit(${i},1)">+</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  });
+
+  document.getElementById("subjects").innerHTML=html;
+  calculate();
+}
+
+function showTab(tab){
+  document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
+  document.getElementById(tab).classList.add("active");
+}
+
+prevCgpaEl.addEventListener("input", calculate);
+prevCreditsEl.addEventListener("input", calculate);
+
+render();
+</script>
+
+</body>
+</html>
